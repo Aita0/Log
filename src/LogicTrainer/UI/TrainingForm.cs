@@ -75,10 +75,29 @@ public sealed class TrainingForm : Form
     private void RenderTable(Control panel, TruthTableExercise e)
     {
         panel.Controls.Add(Formula(e.Expression.ToString())); var names = e.Expression.Variables.Order().ToArray();
-        var grid = new DataGridView { Width = 600, Height = 300, AllowUserToAddRows = false, RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
+        var grid = new DataGridView
+        {
+            Width = Math.Max(600, _content.ClientSize.Width - 80),
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            RowHeadersVisible = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
+            BackgroundColor = Color.WhiteSmoke,
+            BorderStyle = BorderStyle.FixedSingle,
+            ScrollBars = ScrollBars.Both,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
         foreach (var n in names) grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = n, ReadOnly = true });
         var answer = new DataGridViewComboBoxColumn { HeaderText = "Результат", DataSource = new[] { "0", "1" }, FlatStyle = FlatStyle.Flat, ReadOnly = e.IsSubmitted }; grid.Columns.Add(answer);
         for (var i = 0; i < e.Rows.Count; i++) grid.Rows.Add(names.Select(n => (object)(e.Rows[i][n] ? "1" : "0")).Append(e.Answers[i] is null ? null! : e.Answers[i]!.Value ? "1" : "0").ToArray());
+        FitTruthTableGridHeight(grid);
+        EventHandler resizeGrid = (_, _) => grid.Width = Math.Max(600, _content.ClientSize.Width - 80);
+        _content.SizeChanged += resizeGrid;
+        grid.Disposed += (_, _) => _content.SizeChanged -= resizeGrid;
+        grid.FontChanged += (_, _) => FitTruthTableGridHeight(grid);
+        grid.DpiChangedAfterParent += (_, _) => FitTruthTableGridHeight(grid);
         grid.CurrentCellDirtyStateChanged += (_, _) => { if (grid.IsCurrentCellDirty) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
         grid.CellValueChanged += (_, a) => { if (a.RowIndex >= 0 && a.ColumnIndex == names.Length && !e.IsSubmitted) { var v = grid.Rows[a.RowIndex].Cells[a.ColumnIndex].Value?.ToString(); e.SetAnswer(a.RowIndex, v is null ? null : v == "1"); } };
         if (e.IsSubmitted) foreach (var row in e.IncorrectRows) grid.Rows[row].DefaultCellStyle.BackColor = Color.MistyRose; panel.Controls.Add(grid);
@@ -87,10 +106,10 @@ public sealed class TrainingForm : Form
     {
         panel.Controls.Add(new Label { Text = "Выберите название слева, затем соответствующую таблицу справа. Щелчок по выбранному названию отменяет пару.", AutoSize = true });
         panel.Controls.Add(new Label { Text = "Базовое упражнение: сопоставление операций и таблиц истинности", AutoSize = true, ForeColor = Color.DimGray, Font = new Font(Font, FontStyle.Italic), Margin = new Padding(3, 3, 3, 10) });
-        var area = new TableLayoutPanel { ColumnCount = 2, RowCount = 3, Width = 850, Height = 480, Margin = new Padding(0, 8, 0, 8), GrowStyle = TableLayoutPanelGrowStyle.FixedSize };
+        var area = new TableLayoutPanel { ColumnCount = 2, RowCount = 3, Width = 850, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0, 8, 0, 8), GrowStyle = TableLayoutPanelGrowStyle.FixedSize };
         area.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         area.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        for (var row = 0; row < 3; row++) area.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / 3));
+        for (var row = 0; row < 3; row++) area.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         for (var i = 0; i < 3; i++)
         {
             var operationIndex = i;
@@ -124,18 +143,23 @@ public sealed class TrainingForm : Form
 
     private TableLayoutPanel CreateCard(Color borderColor, string caption)
     {
-        var card = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = borderColor, Padding = new Padding(3), Margin = new Padding(8), RowCount = 2, ColumnCount = 1 };
-        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        var cellHeight = GetMatchingCellHeight();
+        var headerHeight = Math.Max(40, TextRenderer.MeasureText(caption, Font).Height + 12);
+        var cardHeight = headerHeight + cellHeight * 5 + 30;
+        var card = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(0, cardHeight), BackColor = borderColor, Padding = new Padding(3), Margin = new Padding(8), RowCount = 2, ColumnCount = 1 };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, headerHeight));
         card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        card.Controls.Add(new Label { Text = caption, Dock = DockStyle.Fill, BackColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleCenter, Font = new Font(Font, FontStyle.Bold), Padding = new Padding(4) }, 0, 0);
+        card.Controls.Add(new Label { Text = caption, Dock = DockStyle.Fill, BackColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleCenter, Font = new Font(Font, FontStyle.Bold), Padding = new Padding(4), AutoSize = false }, 0, 0);
         return card;
     }
 
     private static TableLayoutPanel CreateTruthTable(LogicOperation operation)
     {
-        var table = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.White, ColumnCount = 3, RowCount = 5, Padding = new Padding(14, 6, 14, 8), Cursor = Cursors.Hand, CellBorderStyle = TableLayoutPanelCellBorderStyle.Single };
+        using var cellFont = new Font("Segoe UI", 14, FontStyle.Regular);
+        var cellHeight = Math.Max(34, TextRenderer.MeasureText("01", cellFont).Height + 8);
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, Height = cellHeight * 5 + 16, BackColor = Color.White, ColumnCount = 3, RowCount = 5, Padding = new Padding(14, 6, 14, 8), Cursor = Cursors.Hand, CellBorderStyle = TableLayoutPanelCellBorderStyle.Single };
         for (var column = 0; column < 3; column++) table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
-        for (var row = 0; row < 5; row++) table.RowStyles.Add(new RowStyle(SizeType.Percent, 20));
+        for (var row = 0; row < 5; row++) table.RowStyles.Add(new RowStyle(SizeType.Absolute, cellHeight));
         AddTruthCell(table, "A", 0, 0, true); AddTruthCell(table, "B", 1, 0, true); AddTruthCell(table, "R", 2, 0, true);
         var values = new[] { (false, false), (false, true), (true, false), (true, true) };
         for (var row = 0; row < values.Length; row++)
@@ -148,7 +172,24 @@ public sealed class TrainingForm : Form
     }
 
     private static void AddTruthCell(TableLayoutPanel table, string text, int column, int row, bool heading = false) =>
-        table.Controls.Add(new Label { Text = text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Margin = Padding.Empty, BackColor = heading ? Color.AliceBlue : Color.White, Font = new Font("Segoe UI", 10, heading ? FontStyle.Bold : FontStyle.Regular) }, column, row);
+        table.Controls.Add(new Label { Text = text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Margin = Padding.Empty, Padding = new Padding(2), BackColor = heading ? Color.AliceBlue : Color.White, Font = new Font("Segoe UI", 14, heading ? FontStyle.Bold : FontStyle.Regular), AutoSize = false }, column, row);
+
+    private static int GetMatchingCellHeight()
+    {
+        using var font = new Font("Segoe UI", 14, FontStyle.Regular);
+        return Math.Max(34, TextRenderer.MeasureText("01", font).Height + 8);
+    }
+
+    private static void FitTruthTableGridHeight(DataGridView grid)
+    {
+        grid.AutoResizeColumnHeadersHeight();
+        grid.AutoResizeRows(DataGridViewAutoSizeRowsMode.AllCells);
+        var borderHeight = grid.BorderStyle == BorderStyle.None ? 0 : 2;
+        var horizontalScrollHeight = grid.DisplayedColumnCount(false) < grid.ColumnCount
+            ? SystemInformation.HorizontalScrollBarHeight
+            : 0;
+        grid.Height = grid.ColumnHeadersHeight + grid.Rows.GetRowsHeight(DataGridViewElementStates.Visible) + borderHeight + horizontalScrollHeight;
+    }
 
     private static void SetClickHandler(Control control, EventHandler handler)
     {
