@@ -30,7 +30,8 @@ public sealed class MainForm : Form
     {
         var answer = MessageBox.Show(
             this,
-            $"Начать проверку из 10 заданий? Сложность: {UiHelpers.DifficultyName(_settings.DefaultDifficulty)}.",
+            $"Начать проверку из 10 заданий? Сложность: {UiHelpers.DifficultyName(_settings.DefaultDifficulty)}.\n\n" +
+            "Сложность применяется к заданиям с выражениями. Задания «Найдите пары» остаются базовыми.",
             "Проверка знаний",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
